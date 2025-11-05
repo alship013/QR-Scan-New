@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Advanced QR Code Scanner with multiple libraries support">
+  <meta name="keywords" content="QR code scanner, barcode scanner, HTML5-QRCode, jsQR, ZXing">
+  <meta name="author" content="QR Scanner Combined">
+  <title>QR Scanner Combined - Advanced QR Code Scanner</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+  <!-- Vue.js -->
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.7.14/vue.min.js"></script>
+
+  <!-- QR Scanner Libraries -->
+  <script type="text/javascript" src="https://unpkg.com/html5-qrcode@2.2.1/html5-qrcode.min.js" id="html5-qrcode-script"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" id="jsqr-script"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/visibilityjs@1.2.4/visibility.js"></script>
+
+  <!-- ZXing Libraries -->
+  <script type="text/javascript" src="zxing.js" id="zxing-script"></script>
+  <script type="text/javascript" src="scanner-zxing.js" id="scanner-zxing-script"></script>
+  <script type="text/javascript" src="camera-zxing.js" id="camera-zxing-script"></script>
+
+  <!-- PWA Support -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4a90e2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="QR Scanner">
+</head>
+<body>
+  <div id="app">
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+      <button class="menu-toggle" @click="toggleSidebar" aria-label="Toggle menu">
+        ☰
+      </button>
+      <h1 class="app-title">QR Scanner</h1>
+      <div style="width: 40px;"></div> <!-- Spacer for balance -->
+    </header>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" @click="closeSidebar" :class="{ 'active': sidebarOpen }"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" :class="{ 'active': sidebarOpen }">
+      <!-- Sidebar Header (Mobile Only) -->
+      <div class="sidebar-header">
+        <h2 class="sidebar-title">QR Scanner</h2>
+        <button class="close-sidebar" @click="closeSidebar" aria-label="Close menu">
+          ×
+        </button>
+      </div>
+
+      <!-- Sidebar Content -->
+      <div class="sidebar-content">
+        <!-- Library Selection Section -->
+        <section class="library-selection">
+          <h2>QR Library</h2>
+          <div class="library-options">
+            <label class="library-option">
+              <input type="radio" name="library" value="html5" v-model="selectedLibrary" @change="switchLibrary">
+              <span class="library-name">HTML5-QRCode</span>
+              <span class="library-desc">Rich features, multi-format</span>
+            </label>
+            <label class="library-option">
+              <input type="radio" name="library" value="jsqr" v-model="selectedLibrary" @change="switchLibrary">
+              <span class="library-name">jsQR</span>
+              <span class="library-desc">Lightweight, QR-only</span>
+            </label>
+            <label class="library-option">
+              <input type="radio" name="library" value="zxing" v-model="selectedLibrary" @change="switchLibrary">
+              <span class="library-name">ZXing</span>
+              <span class="library-desc">Multi-format, powerful</span>
+            </label>
+          </div>
+          <div class="library-status" :class="{ 'active': libraryLoaded }">
+            {{ libraryStatus }}
+          </div>
+        </section>
+
+        <!-- Cameras Section -->
+        <section class="cameras">
+          <h2>Cameras</h2>
+          <ul class="camera-list">
+            <li v-if="cameras.length === 0" class="camera-item empty-state">No cameras found</li>
+            <li v-for="camera in cameras" :key="camera.id" class="camera-item">
+              <span class="camera-name" :class="{ 'active': camera.id == activeCameraId }" :title="formatName(camera.name)">
+                {{ formatName(camera.name) }}
+              </span>
+              <button v-if="camera.id != activeCameraId"
+                      @click="selectCamera(camera)"
+                      class="camera-button"
+                      :aria-label="'Use ' + formatName(camera.name)">
+                Use
+              </button>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Scans Section -->
+        <section class="scans">
+          <h2>Scans</h2>
+          <ul class="scan-list" v-if="scans.length === 0">
+            <li class="scan-item empty-state">No scans yet</li>
+          </ul>
+          <transition-group name="scans" tag="ul" class="scan-list">
+            <li v-for="scan in scans" :key="scan.date" class="scan-item" :title="scan.content">
+              <a v-if="getScanHref(scan.content)"
+                 :href="getScanHref(scan.content)"
+                 target="_blank"
+                 rel="noopener noreferrer">
+                {{ scan.content }}
+              </a>
+              <span v-else>{{ scan.content }}</span>
+            </li>
+          </transition-group>
+        </section>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div class="preview-container">
+        <div class="preview-inner">
+          <!-- HTML5-QRCode uses div, jsQR uses video and canvas, ZXing uses video -->
+          <div id="preview" v-if="selectedLibrary === 'html5'"></div>
+          <video id="preview-video" v-if="selectedLibrary === 'jsqr'" style="width: 100%; height: 100%; object-fit: cover;"></video>
+          <canvas id="canvas" v-if="selectedLibrary === 'jsqr'" style="display: none;"></canvas>
+          <video id="zxing-video" v-if="selectedLibrary === 'zxing'" style="width: 100%; height: 100%; object-fit: cover;"></video>
+
+          <!-- Visual guide + scan line lives above the video -->
+          <div class="scan-guide" aria-hidden="true"></div>
+
+          <!-- Status message display -->
+          <div class="scan-status"
+               :class="{
+                 'success': scanStatus.includes('successfully'),
+                 'error': scanStatus.includes('No QR code') || scanStatus.includes('not readable') || scanStatus.includes('Camera issue')
+               }">
+            {{ scanStatus }}
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Main App Script -->
+  <script type="text/javascript" src="app.js"></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          })
+          .catch(function(err) {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+      });
+    }
+  </script>
+</body>
+</html>
